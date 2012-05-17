@@ -443,6 +443,52 @@ class HotfixBranchManager(ReleaseBranchManager):
     def default_base(self):
         return self.gitflow.master_name()
 
+    def finish(self, name, fetch=False, rebase=False, keep=False,
+               force_delete=False, push=False, tagging_info=None):
+        assert rebase == False, "Rebasing a release branch does not make any sense."
+        # require hotfix branch to exist
+        gitflow = self.gitflow
+        full_name = self.full_name(name)
+
+        #Try to find an active release branch
+        releases = gitflow.managers[ReleaseBranchManager.identifier].list()
+        if releases:
+            upstream = releases[0].name
+        else:
+            upstream = gitflow.develop_name()
+
+        gitflow.must_be_uptodate(full_name, fetch=fetch)
+        gitflow.must_be_uptodate(gitflow.master_name(), fetch=fetch)
+        gitflow.must_be_uptodate(upstream, fetch=fetch)
+
+        to_push = [self.gitflow.develop_name(), self.gitflow.master_name()]
+
+        self.merge(name, self.gitflow.master_name(),
+                'Finished %s %s.' % (self.identifier, name))
+
+        tag = None
+        if tagging_info is not None:
+            # try to tag the release
+            tagname = self.gitflow.get('gitflow.prefix.versiontag') + name
+            # In case a previous attempt to finish this release branch
+            # has failed, but the tag was set successful, we skip it
+            # now.
+            # :todo: check: if tag exists, it must point to the commit
+            tag = gitflow.tag(tagname, self.gitflow.master_name(),
+                        **tagging_info)
+            to_push.append(tagname)
+
+        # merge the master branch back into develop; this makes the
+        # master branch - and the new tag (if provided) - a parent of
+        # the development branch, which in turn lets you use 'git
+        # describe' on either branch
+        self.merge(name, upstream,
+                   'Finished %s %s.' % (self.identifier, name))
+        if not keep:
+            self.delete(name, force=force_delete)
+            to_push.append(':'+full_name)
+        if push:
+            gitflow.origin().push(to_push)
 
 class SupportBranchManager(BranchManager):
     identifier = 'support'

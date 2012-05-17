@@ -1120,8 +1120,7 @@ class TestHotfixBranchManager(TestCase):
     def test_defined_members(self):
         members = vars(HotfixBranchManager).keys()
         self.assertEqual(members,
-                         ['DEFAULT_PREFIX', '__module__',
-                          'identifier', 'default_base', '__doc__'])
+                         ['DEFAULT_PREFIX', '__module__', 'finish',                 'default_base', 'identifier', '__doc__'])
 
     @copy_from_fixture('sample_repo')
     def test_shorten(self):
@@ -1175,7 +1174,7 @@ class TestHotfixBranchManager(TestCase):
                 gitflow.repo.branches['stable'].commit)
 
     @copy_from_fixture('sample_repo')
-    def test_finish_hotfix(self):
+    def test_finish_hotfix_without_release_branch(self):
         gitflow = GitFlow(self.repo)
         mgr = HotfixBranchManager(gitflow)
         mgr.create('1.2.3')
@@ -1200,6 +1199,36 @@ class TestHotfixBranchManager(TestCase):
 
         # Merge commit message
         self.assertEquals('Finished hotfix 1.2.3.\n', dc1.message)
+
+    @copy_from_fixture('release')
+    def test_finish_hotfix_with_release_branch(self):
+        gitflow = GitFlow(self.repo)
+        mgr = HotfixBranchManager(gitflow)
+        mgr.create('1.0.1')
+        fake_commit(self.repo, 'Bogus commit')
+        fake_commit(self.repo, 'Foo commit')
+        fake_commit(self.repo, 'Fake commit')
+        fake_commit(self.repo, 'Dummy commit')
+
+        mc0 = gitflow.master().commit
+        dc0 = gitflow.develop().commit
+        rc0 = self.repo.branches['rel/1.0'].commit
+        mgr.finish('1.0.1')
+        mc1 = gitflow.master().commit
+        dc1 = gitflow.develop().commit
+        rc1 = self.repo.branches['rel/1.0'].commit
+
+        # Hotfix finishes advance both master and release, but not develop
+        self.assertNotEqual(mc0, mc1)
+        self.assertNotEqual(rc0, rc1)
+        self.assertEquals(dc0, dc1)
+
+        # Finishing removes the hotfix branch
+        self.assertNotIn('hf/1.2.3',
+                [b.name for b in self.repo.branches])
+
+        # Merge commit message
+        self.assertEquals('Finished hotfix 1.0.1.\n', rc1.message)
 
 
 class TestSupportBranchManager(TestCase):
